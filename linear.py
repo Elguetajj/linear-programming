@@ -1,19 +1,19 @@
 import numpy as np
 import sympy as sp
+from sympy.solvers.inequalities import reduce_rational_inequalities
 
 x,y = sp.symbols('x,y')
 
 class LinearSolver:
 
-    def __init__(self, constraints, objective,maxmin):
-        '''inicializa la clase.
+    def __init__(self,objective,constraints,maxmin):
+        '''inicializes an instance of the class Linear Solver.
 
             Args:
-                constraints (list of strings) : restricciones del problema en una lista de strings igual al formato numpy
-                objective (string): la función objetivo en string con formato de numpy 
+                objective (string): Objective function of the problem as a string in numpy format.
+                constraints (list of strings) : Problem constraints as a list of strings in numpy format.
+                maxmin (boolean): 0 if the problem is a maximization, 1 if it is a minimization. 
 
-            Returns:
-                Instancia de la clase Linear Solver 
         '''
         self.__constraints: list = constraints
         self.__constraints_as_eqs: list = []
@@ -23,9 +23,12 @@ class LinearSolver:
         self.__solution_points: dict = None
         self.__solution: int = None
         self.__maxmin: str = maxmin
+        self.__binding_constraints: list = None
+        self.__binding_slopes:list=[]
+        self.__sensitivity:dict = {'x': None , 'y': None}
 
     def constraints_to_eqs(self):
-        ''' Convierte las restricciones en igualdades a 0 y las guarda en el atributo privado "__constraints_as_eqs" como un array de strings.
+        ''' Converts restrictions to equations equaled to 0 and saves them in the private field "__constraints_as_eqs" as an array of strings.
         '''
         for constraint in self.__constraints:
             if '<=' in constraint:
@@ -41,7 +44,7 @@ class LinearSolver:
         print(self.__constraints_as_eqs)
     
     def find_intercepts(self):
-        ''' Utiliza los elementos del atributo privado "__constraints_as_eqs" para encontrar los interceptos entre todas las restricciones y los guarda en el atributo privado "__intercepts" del objeto
+        ''' Uses "__constraints_as_eqs" to find the intercepts of the problem and saves them to "__intercepts"
         '''
         for i in range(0,len(self.__constraints_as_eqs)-1):
             for j in range(i+1,len(self.__constraints_as_eqs)):
@@ -49,11 +52,11 @@ class LinearSolver:
         print(self.__intercepts)
     
     def eval_possible_solutions(self):
-        ''' Recorre los interceptos en "__intercepts" y los evalua contra las restricciones. Si los interceptos cumplen se guardan en el atributo privado "__posible_solutions"
+        ''' Loops through "__intercepts" and evaluates the points. If a point satisfies all restrictions, it is saved to "__posible_solutions"
         '''
         for intercept in self.__intercepts:
             check = []
-            print(intercept[x],intercept[y])
+            # print(intercept[x],intercept[y])
             for i in self.__constraints:
                 res = i.replace('x',str(intercept[x])).replace('y',str(intercept[y]))
                 check.append(eval(res))
@@ -61,7 +64,10 @@ class LinearSolver:
             if all(check):
                 self.__posible_solutions.append(intercept)
     
-    def solution_points(self):
+    def find_solution(self):
+        '''Loops throgh solution points and evaluates them in the objective function to find the answer to the problem.
+        '''
+        
         if self.__posible_solutions == []:
             self.__solution = "No possible solution for this problem"
         else:
@@ -76,22 +82,46 @@ class LinearSolver:
             else:
                 self.__solution = min(solutions)
                 self.__solution_points = self.__posible_solutions[solutions.index(min(solutions))]
-        print('solution points:')
-        print(self.__solution_points)
-        print('solution:')
-        print(self.__solution)
+        print(f"Solution Points: {self.__solution_points}")
+        print(f'Solution: {self.__solution}')
     
     def solve(self):
         self.constraints_to_eqs()
         self.find_intercepts()
         self.eval_possible_solutions()
-        self.solution_points()
+        self.find_solution()
 
+    def find_binding_constraints(self):
+        for i in range(0,len(self.__constraints_as_eqs)-1):
+            for j in range(i+1,len(self.__constraints_as_eqs)):
+                if (self.__solution_points == sp.solve([eval(self.__constraints_as_eqs[i]),eval(self.__constraints_as_eqs[j])])):
+                    self.__binding_constraints = [self.__constraints_as_eqs[i],self.__constraints_as_eqs[j]]
+                    print(f"Binding Constraints: {self.__constraints_as_eqs[i]} , {self.__constraints_as_eqs[j]}")
 
+    def find_binding_slopes(self):
+        for constraint in self.__binding_constraints:
+            solved = sp.solve(eval(constraint),y)
+            print(solved)
+            if solved != []:
+                slope = sp.diff(solved[0])
+                self.__binding_slopes.append(slope)
+        self.__binding_slopes.sort()
+        print(self.__binding_slopes)
 
-# print(reduce_rational_inequalities([[eval(eq),eval(eq2)]],x))
-
-
-
-
+    def find_sensitivity(self):
+        x_coeficient = str(eval(self.__objective.replace('y','0').replace('x','1')))
+        y_coeficient = str(eval(self.__objective.replace('x','0').replace('y','1')))
+        print(f'x coeficient: {x_coeficient}')
+        print(f'y coeficient: {y_coeficient}')
+        slope = '-x/y'
+        x_ssss = slope.replace('y',y_coeficient)
+        x_increase = sp.solve([eval(f'{self.__binding_slopes[0]}<={x_ssss}')],x)
+        x_decrease = sp.solve([eval(f'{x_ssss}<={self.__binding_slopes[1]}')],x)
+        print(f'{self.__binding_slopes[0]}<={x_ssss}: {x_increase}')
+        print(f'{x_ssss}<={self.__binding_slopes[1]}: {x_decrease}')
+        y_ssss = slope.replace('x',x_coeficient)
+        y_increase = sp.solve([eval(f'{self.__binding_slopes[0]}<={y_ssss}')],y)
+        y_decrease = sp.solve([eval(f'{y_ssss}<={self.__binding_slopes[1]}')],y)
+        print(f'{self.__binding_slopes[0]}<={y_ssss}: {y_increase}')
+        print(f'{y_ssss}<={self.__binding_slopes[1]}: {y_decrease}')
 
